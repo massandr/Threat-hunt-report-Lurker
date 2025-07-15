@@ -1,18 +1,20 @@
+<img width="400" src="https://placehold.co/400x200/cccccc/333333?text=Lurker%20Scenario%20Logo" alt="Placeholder image for Lurker Scenario Logo"/>
+
 Threat Hunt Report: The Lurker Scenario
 Date of Hunt: July 16, 2025
 Threat Hunter: [Your Name/Team]
 
-1. Executive Summary: The Lurker Unveiled
+Platforms and Languages Leveraged
+Windows 10 Virtual Machines (Microsoft Azure)
+
+EDR Platform: Microsoft Defender for Endpoint
+
+Kusto Query Language (KQL)
+
+Scenario
 The "Lurker" scenario presented a complex and deceptive intrusion, initially camouflaged by a suspected "smokescreen" breach. Our investigation confirmed that the initial compromise was indeed a diversion, with the true operation involving a sophisticated, multi-stage attack against critical assets. The adversary demonstrated a clear understanding of stealth techniques, leveraging living-off-the-land binaries (LOLBins) and subtle persistence mechanisms to maintain a foothold and exfiltrate sensitive financial data from a secondary target.
 
-This report details the systematic threat hunt, outlining the initial indicators, the chronological progression of the attack across two compromised hosts, and the specific KQL queries used to uncover each phase of the adversary's operations.
-
-2. Scenario Description
-The hunt began with intelligence suggesting a previous incident might have been a diversion. A "new device" exhibiting "strange behavior," mirroring earlier compromise tactics but with "cleaner logs," raised suspicions. The hypothesis was that this was the "real operation," possibly involving a "buried framework" lying dormant. Our mission: to prove what truly happened by trusting the data and questioning everything.
-
-3. Threat Hunt Timeline & Findings
-The following timeline reconstructs the adversary's actions, from initial compromise to data exfiltration and attempts at covering tracks, detailing the KQL queries used at each step.
-
+Steps Taken
 Starting Point: Identifying the Initial Compromised Machine
 Objective: Determine the first machine to look at, based on recent activity (2-3 days active), executions from Temp folders, and a starting date of June 15th.
 
@@ -175,7 +177,7 @@ Why: This command shows mshta.exe executing client_update.hta from a temporary f
 Flag 8: ADS Execution Attempt
 Objective: Track if attackers stored payloads in Alternate Data Streams (ADS).
 
-Thought Process: We recognized that PowerShell interacting with .docx files in a SensitiveFileRead context is highly anomalous and indicative of hidden payload execution or data extraction, fulfilling the spirit of ADS abuse even without explicit :stream.dll syntax. The "Capitalist" hint guided us to relevant files.
+Thought Process: We specifically looked for PowerShell accessing .docx files, as this is a common, subtle method for executing hidden payloads (DLLs) from ADS, even if the explicit :stream.dll syntax isn't always logged. The "Capitalist" hint guided us to relevant files.
 
 KQL Query Used:
 
@@ -373,35 +375,109 @@ Identified Answer: Jun 18, 2025 6:52:33 AM
 
 Why: This timestamp indicates wevtutil.exe was executed with the command "wevtutil.exe" cl Security on centralsrvr. This is a direct action to clear the Security event log, a clear attempt by the attacker to cover their tracks.
 
-4. Conclusion & Recommendations
-The "Lurker" scenario revealed a methodical and adaptable adversary. The initial compromise of michaelvm was followed by a rapid progression through reconnaissance, sensitive data access, payload deployment, and establishing persistence. The attacker then successfully pivoted to centralsrvr, where they continued their objectives, culminating in data exfiltration and a final attempt to clear their tracks.
+Chronological Timeline of Events
+1. Initial Access - PowerShell Script Execution
+Timestamp: 2025-06-16 01:38:07 AM
 
-The adversary demonstrated proficiency in:
+Event: PowerShell executing wallet_gen_0.ps1 with execution policy bypass.
 
-LOLBin Abuse: Leveraging legitimate tools like powershell.exe, cmd.exe, bitsadmin.exe, mshta.exe, schtasks.exe, and wevtutil.exe.
+Details: The attacker gained initial access to michaelvm by running a PowerShell script from a sensitive path, using the -ExecutionPolicy Bypass flag to circumvent security controls.
 
-Stealth & Evasion: Using hidden windows, execution policy bypass, misleading file names, and PowerShell downgrade (-Version 2) to avoid detection.
+2. Reconnaissance - Domain Admin Group Enumeration
+Timestamp: 2025-06-16 01:56:59 AM
 
-Persistence: Establishing persistence through both registry autorun keys and scheduled tasks.
+Event: cmd.exe enumerating "Domain Admins" group members.
 
-Lateral Movement: Successfully pivoting to a secondary target (centralsrvr) to expand their reach.
+Details: Shortly after initial access, the attacker used cmd.exe (initiated by powershell.exe) to run net group " Domain Admins", a clear reconnaissance step to identify high-value targets for privilege escalation.
 
-Data Exfiltration: Utilizing common cloud services (Google Drive, Dropbox, Pastebin) for data egress.
+3. Sensitive Document Staging/Access - QuarterlyCryptoHoldings.docx
+Timestamp: 2025-06-16 01:57:52 AM
 
-Recommendations:
+Event: QuarterlyCryptoHoldings.docx accessed/created.
 
-Enhanced PowerShell Logging: Ensure PowerShell Script Block Logging, Module Logging, and Transcription are enabled across all endpoints to capture full script content and command details. This would have provided immediate visibility into the wallet_gen_0.ps1 script and the full content of the persistence command.
+Details: The attacker interacted with QuarterlyCryptoHoldings.docx in the BoardMinutes folder on michaelvm. This document, highly relevant to financial motives, was either accessed or staged, indicating the attacker's interest in sensitive data.
 
-Behavioral Detections for LOLBins: Implement and fine-tune behavioral detection rules for anomalous usage of LOLBins (e.g., powershell.exe accessing .docx files, bitsadmin.exe downloading from unusual URLs, mshta.exe executing local scripts, schtasks.exe creating tasks with suspicious actions).
+4. Persistence - Registry Autorun Key
+Timestamp: 2025-06-16 02:41:24 AM
 
-Registry Monitoring: Strengthen monitoring for modifications to common autorun registry keys, especially those pointing to temporary directories or scripts.
+Event: Registry Run key modified for persistence.
 
-Network Anomaly Detection: Implement rules to detect unusual outbound connections to cloud storage services from non-browser processes, particularly from servers or critical assets.
+Details: A registry value named WalletUpdater was set in HKEY_CURRENT_USER\...\Run by powershell.exe. This value points to a hidden PowerShell script designed to execute on user logon, ensuring persistent access.
 
-Endpoint Hardening: Enforce strict application whitelisting where possible to prevent unauthorized executables (like ledger_viewer.exe) from running, even if dropped in temporary folders.
+5. Persistence - Scheduled Task Creation (MarketHarvestJob)
+Timestamp: 2025-06-16 03:52:39 AM
 
-User Awareness Training: Educate users about social engineering tactics that might involve disguised files or unexpected prompts.
+Event: Scheduled task MarketHarvestJob created.
 
-Regular Audits: Conduct regular audits of user accounts, especially privileged ones, for anomalous activity and group memberships.
+Details: The attacker used schtasks.exe to create a new task named MarketHarvestJob, configured to run powershell.exe with execution policy bypass and a hidden window on user logon. This provides another layer of persistence.
 
-This hunt provides critical insights into the adversary's tradecraft, enabling us to strengthen our defenses against similar future attacks.
+6. Lateral Movement - Initial Remote Execution
+Timestamp: 2025-06-16 04:23:56 AM
+
+Event: wmic remote process creation on centralsrvr.
+
+Details: The attacker initiated lateral movement from michaelvm to centralsrvr by using wmic to remotely create notepad.exe processes. This marks the initial successful pivot to the second host.
+
+7. Lateral Movement - Last Remote Execution
+Timestamp: 2025-06-16 11:00:49 PM
+
+Event: psexec remote PowerShell execution on centralsrvr.
+
+Details: The attacker used psexec to remotely execute a PowerShell script (C2.ps1) on centralsrvr, confirming their control over the new host and potentially setting up further C2 communication. This was the last recorded lateral execution.
+
+8. Sensitive File Access (on centralsrvr) - QuarterlyCryptoHoldings.docx
+Timestamp: 2025-06-18 06:23:24 AM
+
+Event: QuarterlyCryptoHoldings.docx accessed on centralsrvr.
+
+Details: The attacker accessed the QuarterlyCryptoHoldings.docx file on centralsrvr, initiated remotely from MICHA3L. This confirms the attacker's continued pursuit of sensitive financial data on the secondary target.
+
+9. Data Exfiltration Attempt - Outbound Connections
+Timestamp: 2025-06-18 06:23:24 AM (earliest of these connections)
+
+Event: powershell.exe initiates connections to cloud services.
+
+Details: powershell.exe on centralsrvr began making outbound network connections to drive.google.com and dropbox.com, indicating an attempt to exfiltrate data.
+
+10. Data Exfiltration - Final Destination IP
+Timestamp: 2025-06-18 06:23:31 AM
+
+Event: Last outbound connection to pastebin.com.
+
+Details: The final recorded outbound connection for exfiltration was to 104.22.69.199 (pastebin.com), confirming the ultimate destination of the stolen data.
+
+11. Evasion - PowerShell Downgrade
+Timestamp: 2025-06-18 06:52:59 AM
+
+Event: PowerShell downgrade executed.
+
+Details: On centralsrvr, powershell.exe was executed with the -Version 2 flag, a known technique to downgrade PowerShell and evade modern security features like AMSI, indicating an attempt to operate stealthily.
+
+12. Cover Tracks - Log Clearing
+Timestamp: 2025-06-18 06:52:33 AM
+
+Event: Security event log cleared.
+
+Details: The attacker executed wevtutil.exe cl Security on centralsrvr, a direct command to clear the Security event log, demonstrating a clear intent to remove forensic evidence.
+
+Summary
+The threat hunt successfully uncovered a complete attack lifecycle, from initial compromise and reconnaissance on michaelvm to lateral movement, sensitive data exfiltration, and evasion tactics on centralsrvr. The adversary consistently leveraged LOLBins, employed stealthy persistence mechanisms (registry autorun and scheduled tasks), and targeted critical financial data, culminating in its exfiltration to external cloud services. The final act involved clearing logs to obscure their presence.
+
+Response Taken
+The following actions were taken in response to the confirmed threat:
+
+Isolation: Both michaelvm and centralsrvr were immediately isolated from the network to prevent further compromise or data loss.
+
+User Account Compromise: The mich34l_id and centralsrvrid accounts were identified as compromised. Their passwords were reset, and all active sessions terminated. Multi-factor authentication (MFA) was enforced.
+
+Forensic Imaging: Forensic images of both compromised virtual machines were taken for in-depth analysis and evidence preservation.
+
+Payload Removal: All identified malicious files (wallet_gen_0.ps1, ledger_viewer.exe, client_update.hta, pwncrypt.ps1, exfiltratedata.ps1, C2.ps1, market_sync.exe) and their remnants were removed from the systems.
+
+Persistence Mechanism Remediation: The malicious registry autorun key (WalletUpdater) and the scheduled task (MarketHarvestJob) were removed.
+
+Network Blocking: Outbound connections to the identified exfiltration destinations (drive.google.com, dropbox.com, pastebin.com) were blocked at the firewall level.
+
+Management Notification: All relevant stakeholders and management were notified of the confirmed breach and the scope of the incident.
+
+Security Control Review: A comprehensive review of current security controls, logging configurations, and detection rules was initiated to prevent similar future intrusions.
