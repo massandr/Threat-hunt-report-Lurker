@@ -31,13 +31,9 @@ The "Lurker" scenario presented a complex and deceptive intrusion, initially cam
 * **KQL Query Used:**
     ```kusto
     DeviceProcessEvents
-    | where Timestamp between (datetime(2025-06-15) .. datetime(2025-06-18)) // Initial broad timeframe
-    | where FolderPath contains "Temp" or FolderPath contains "tmp" or FolderPath contains "AppData\\Local\\Temp" or FolderPath contains "Windows\\Temp" // Refined temp paths
-    | where InitiatingProcessAccountName != "system" // Exclude system noise
-    | summarize FirstEvent = min(Timestamp), LastEvent = max(Timestamp), TotalEvents = count() by DeviceName
-    | where LastEvent - FirstEvent <= 3d // Filter for activity span of 2-3 days
-    | order by TotalEvents desc
-    | limit 10 // Review top candidates
+    | where Timestamp between (datetime(2025-06-14) .. datetime(2025-06-18)) // Looking for activity on or around June 15th, for about 3 days
+    | where FolderPath has_any ("Temp", "temp", "tmp")
+    | where InitiatingProcessAccountName != "system"
     ```
 * **Identified Answer:** **`michaelvm`** was identified as the primary candidate due to its high volume of suspicious activity originating from temporary folders, including `DismHost.exe` executions initiated by `cleanmgr.exe`, which, while noisy, indicated potential abuse in that context.
 
@@ -57,6 +53,10 @@ The "Lurker" scenario presented a complex and deceptive intrusion, initially cam
     | order by Timestamp asc // Find the earliest event
     | limit 1 // Get only the first result
     ```
+* ** Query Results:**
+<img width="767" height="161" alt="image6" src="https://github.com/user-attachments/assets/9665b24e-84b5-42e5-9e90-84db9c93d775" />
+
+    
 * **Identified Answer:** **`Jun 16, 2025 01:38:07 AM`** - `powershell.exe` executing `"powershell.exe" -ExecutionPolicy Bypass -File "C:\Users\Mich34L_id\CorporateSim\Investments\Crypto\wallet_gen_0.ps1"`
     * **Why:** This command used `ExecutionPolicy Bypass` to run a script (`wallet_gen_0.ps1`) from a non-standard, sensitive-looking path (`CorporateSim\Investments\Crypto`), indicating initial malicious execution.
 
