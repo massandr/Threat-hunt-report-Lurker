@@ -286,7 +286,8 @@ The "Lurker" scenario presented a complex and deceptive intrusion, initially cam
         * `"cmd.exe" /c "psexec \\centralsrvr -u financeadmin -p ********** notepad.exe" (Jun 16, 2025 4:24:03 AM)`
 
         * `"schtasks.exe" /Create /S centralsrvr /U centralsrvr\\adminuser /P ********** /TN RemoteC2Task /TR "powershell.exe -ExecutionPolicy Bypass -File C:\\Users\\Public\\C2.ps1" /SC ONLOGON (Jun 16, 2025 4:32:34 AM)`
-These commands clearly indicate remote execution attempts and persistence setup targeting centralsrvr from michaelvm.
+
+    These commands clearly indicate remote execution attempts and persistence setup targeting centralsrvr from michaelvm.
 
 ---
 
