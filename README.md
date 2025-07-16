@@ -1,7 +1,7 @@
 
 <img width="600" alt="image" src="https://github.com/user-attachments/assets/0d4ebb74-58c6-4e12-8b15-862a463a707e" />
 
-# Threat Hunt Report: The Lurker Scenario
+# Threat Hunt Report: The Lurker 
 
 **Date of Hunt:** July 16, 2025
 
@@ -16,7 +16,7 @@
 
 ---
 
-## Scenario
+## Scenario. Build by the [Cyber Range](skool.com/cyber-range).
 
 The "Lurker" scenario presented a complex and deceptive intrusion, initially camouflaged by a suspected "smokescreen" breach. Our investigation confirmed that the initial compromise was indeed a diversion, with the true operation involving a sophisticated, multi-stage attack against critical assets. The adversary demonstrated a clear understanding of stealth techniques, leveraging living-off-the-land binaries (LOLBins) and subtle persistence mechanisms to maintain a foothold and exfiltrate sensitive financial data from a secondary target.
 
