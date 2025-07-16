@@ -190,13 +190,14 @@ The "Lurker" scenario presented a complex and deceptive intrusion, initially cam
     ```kusto
     DeviceProcessEvents
     | where DeviceName == "michaelvm"
-    | where Timestamp > datetime(2025-06-16 02:15:37 AM) // After Flag 6 (payload deployment)
-    | where FileName =~ "mshta.exe"
-    | where ProcessCommandLine has ".hta" and not (ProcessCommandLine has "http://" or ProcessCommandLine has "https://") // Local HTA
-    | project Timestamp, DeviceName, FileName, ProcessCommandLine, InitiatingProcessFileName
-    | order by Timestamp asc
-    | limit 1
+    | where ProcessCommandLine contains "mshta.exe"
+    | project Timestamp, DeviceName, FileName, ProcessCommandLine
     ```
+* **Query Results:**
+<img width="1026" height="116" alt="image9" src="https://github.com/user-attachments/assets/5908b34d-e911-4821-befc-c926267fb01b" />
+
+
+
 * **Identified Answer:** **`"mshta.exe" C:\Users\MICH34~1\AppData\Local\Temp\client_update.hta`**
     * **Why:** This command shows `mshta.exe` executing `client_update.hta` from a temporary folder at `Jun 16, 2025 2:17:27 AM`. This is a classic HTA abuse technique for code execution, often used after initial access.
 
@@ -210,15 +211,16 @@ The "Lurker" scenario presented a complex and deceptive intrusion, initially cam
     ```kusto
     DeviceEvents
     | where DeviceName == "michaelvm"
-    | where Timestamp > datetime(2025-06-16 02:18:14 AM) // After Flag 7
     | where ActionType == "SensitiveFileRead" // Focus on file reads
     | where FileName contains ".docx" // Target document files
     | where InitiatingProcessFileName =~ "powershell.exe" // Initiated by PowerShell
-    | where FileName has_any ("capitalist", "stock", "market", "economy", "invest", "profit", "asset", "ledger", "account", "finance", "holdings", "portfolio") // Capitalist hint
     | project Timestamp, DeviceName, FileName, InitiatingProcessFileName, SHA1
     | order by Timestamp asc
-    | limit 1
     ```
+* **Query Results:**
+<img width="1999" height="539" alt="image13" src="https://github.com/user-attachments/assets/4af47da5-ed4d-43bb-a71a-9e52028d060e" />
+
+    
 * **Identified Answer:** **`801262e122db6a2e758962896f260b55bbd0136a`**
     * **Why:** This SHA1 hash belongs to `powershell.exe` when it performed a `SensitiveFileRead` on `QuarterlyCryptoHoldings.docx` at `Jun 16, 2025 1:57:52 AM`. PowerShell accessing a `.docx` file, especially one as sensitive as `QuarterlyCryptoHoldings.docx`, is highly anomalous and indicative of an attacker either reading its content or executing a hidden payload within it via an in-memory technique, fulfilling the spirit of the ADS objective.
 
@@ -232,15 +234,15 @@ The "Lurker" scenario presented a complex and deceptive intrusion, initially cam
     ```kusto
     DeviceRegistryEvents
     | where DeviceName == "michaelvm"
-    | where Timestamp > datetime(2025-06-16 02:18:14 AM) // After Flag 7
     | where InitiatingProcessAccountName != "system"
-    | where RegistryKey has_any (@"CurrentVersion\Run", @"CurrentVersion\RunOnce") // Target common autorun keys
-    | where ActionType == "RegistryValueSet" // Look for value setting
-    | where RegistryValueData has_any ("powershell.exe -WindowStyle Hidden -ExecutionPolicy Bypass -File") // Look for the specific malicious command
-    | project Timestamp, DeviceName, RegistryKey, RegistryValueName, RegistryValueData
+    | where RegistryKey contains "run"
+    | project Timestamp, DeviceName, InitiatingProcessFileName, InitiatingProcessCommandLine, ActionType, RegistryKey, RegistryValueName, RegistryValueData
     | order by Timestamp asc
-    | limit 1
     ```
+* **Query Results:**
+<img width="1759" height="132" alt="image15" src="https://github.com/user-attachments/assets/87730a63-0158-4bdf-9272-86c9ebbb9be0" />
+
+    
 * **Identified Answer:** **`powershell.exe -WindowStyle Hidden -ExecutionPolicy Bypass -File `**
     * **Why:** This registry value was set in `HKEY_CURRENT_USER\...\Run` at `Jun 16, 2025 2:41:24 AM` by `powershell.exe`. The command itself clearly shows an attempt to run a hidden PowerShell script with execution policy bypass, making it a definitive persistence mechanism. The `RegistryValueName` `WalletUpdater` is also a clear camouflage.
 
@@ -254,14 +256,16 @@ The "Lurker" scenario presented a complex and deceptive intrusion, initially cam
     ```kusto
     DeviceProcessEvents
     | where DeviceName == "michaelvm"
-    | where Timestamp > datetime(2025-06-16 02:18:14 AM) // After Flag 7
     | where AccountName != "system"
     | where FileName =~ "schtasks.exe" and ProcessCommandLine contains "/Create" and ProcessCommandLine contains "/TN"
-    | where ProcessCommandLine has_any ("client_update.hta", "powershell.exe -ExecutionPolicy Bypass -File") // Look for known payloads
-    | project Timestamp, DeviceName, ProcessCommandLine
+    | project Timestamp, DeviceName, FileName, ProcessCommandLine, AccountName
     | order by Timestamp asc
-    | limit 1
     ```
+* **Query Results:**
+<img width="1329" height="303" alt="image14" src="https://github.com/user-attachments/assets/467b3708-b2f9-4f24-903a-878862a8f9c0" />
+
+
+
 * **Identified Answer:** **`MarketHarvestJob`**
     * **Why:** This task name was found in the command line of `schtasks.exe` at `Jun 16, 2025 3:52:39 AM`. The full command (`"schtasks /Create /SC ONLOGON /TN \" "MarketHarvestJob\ /TR \powershell.exe" -WindowStyle Hidden -ExecutionPolicy Bypass -File "C:\Users\MICH34~1\AppData\Local\Temp\client_update.hta"`) clearly shows a new task designed for persistence (on logon) and executing a known attacker payload (`client_update.hta`).
 
@@ -270,20 +274,19 @@ The "Lurker" scenario presented a complex and deceptive intrusion, initially cam
 ### Flag 11: Target of Lateral Movement
 
 * **Objective:** Identify the remote machine the attacker pivoted to next.
-* **Thought Process:** Lateral movement involves commands executed from the initial host targeting a new host. We looked for `wmic` or `psexec` commands explicitly naming a remote server.
-* **KQL Query Used:**
-    ```kusto
-    DeviceProcessEvents
-    | where DeviceName == "michaelvm"
-    | where Timestamp > datetime(2025-06-16 11:00:49 PM) // After latest local activity (Flag 12, which was based on this data)
-    | where AccountName != "system"
-    | where ProcessCommandLine has_any ("wmic /node:", "psexec \\\\") // Common lateral movement tools targeting remote nodes
-    | project Timestamp, DeviceName, ProcessCommandLine
-    | order by Timestamp asc
-    | limit 1
-    ```
+* **Thought Process:** Lateral movement involves commands executed from the initial host targeting a new host. We observed logs from previous broader queries (e.g., DeviceProcessEvents for schtasks, wmic, psexec commands) to find explicit remote execution attempts.
+* **KQL Query Used:** This finding was derived from observing the ProcessCommandLine of DeviceProcessEvents from broader queries that included schtasks.exe, wmic.exe, and psexec.exe activity on michaelvm after the initial compromise. No specific new KQL query was run solely for this flag.
+
+
 * **Identified Answer:** **`centralsrvr`**
-    * **Why:** Commands like `"wmic /node:centralsrvr process call create 'notepad.exe'"` and `"psexec \\centralsrvr -u financeadmin -p ********** notepad.exe"` clearly indicate remote execution attempts targeting `centralsrvr` from `michaelvm`.
+    * **Why:** Multiple commands consistently pointed to `centralsrvr` as the target for remote execution. Examples observed in logs include:
+
+        * `"cmd.exe" /c "wmic /node:centralsrvr process call create 'notepad.exe'" (Jun 16, 2025 4:23:56 AM)`
+
+        * `"cmd.exe" /c "psexec \\centralsrvr -u financeadmin -p ********** notepad.exe" (Jun 16, 2025 4:24:03 AM)`
+
+        * `"schtasks.exe" /Create /S centralsrvr /U centralsrvr\\adminuser /P ********** /TN RemoteC2Task /TR "powershell.exe -ExecutionPolicy Bypass -File C:\\Users\\Public\\C2.ps1" /SC ONLOGON (Jun 16, 2025 4:32:34 AM)`
+These commands clearly indicate remote execution attempts and persistence setup targeting centralsrvr from michaelvm.
 
 ---
 
