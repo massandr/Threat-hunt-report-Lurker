@@ -16,7 +16,7 @@
 
 ---
 
-## Scenario. Build by the [Cyber Range](skool.com/cyber-range).
+## Scenario. Build by the [Cyber Range](https://www.skool.com/cyber-range) team.
 
 The "Lurker" scenario presented a complex and deceptive intrusion, initially camouflaged by a suspected "smokescreen" breach. Our investigation confirmed that the initial compromise was indeed a diversion, with the true operation involving a sophisticated, multi-stage attack against critical assets. The adversary demonstrated a clear understanding of stealth techniques, leveraging living-off-the-land binaries (LOLBins) and subtle persistence mechanisms to maintain a foothold and exfiltrate sensitive financial data from a secondary target.
 
