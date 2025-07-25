@@ -3,7 +3,7 @@
 
 # Threat Hunt Report: The Lurker 
 
-**Date of Hunt:** July 16, 2025
+**Date of Hunt:** July 5 - July 12, 2025
 
 **Threat Hunter:** Andrey Massalskiy
 
