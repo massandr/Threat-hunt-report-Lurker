@@ -301,11 +301,14 @@ The "Lurker" scenario presented a complex and deceptive intrusion, initially cam
     | where DeviceName == "michaelvm"
     | where AccountName != "system"
     | where ProcessCommandLine contains "centralsrvr" // Commands targeting the remote server
-    | project Timestamp, DeviceName, ProcessCommandLine
+    | project Timestamp, DeviceName, FileName, ProcessCommandLine, AccountName
     | order by Timestamp desc // Order by latest timestamp
-    | limit 1
     ```
-* **Identified Answer:** **`Jun 16, 2025 11:00:49 PM`**
+* **Query Results:**
+<img width="1572" height="323" alt="image4" src="https://github.com/user-attachments/assets/25d21438-37ff-4eeb-9e28-ff26bee7128b" />
+
+
+* **Identified Answer:** **`2025-06-17T03:00:49.525038Z`**
     * **Why:** This timestamp corresponds to the latest `psexec` command from `michaelvm` targeting `centralsrvr` (`"cmd.exe" /c psexec \\centralsrvr -u adminuser -p ********** powershell.exe -ExecutionPolicy Bypass -File C:\\Users\\Public\\C2.ps1`).
 
 ---
@@ -318,12 +321,14 @@ The "Lurker" scenario presented a complex and deceptive intrusion, initially cam
     ```kusto
     DeviceFileEvents
     | where DeviceName == "centralsrvr"
-    | where Timestamp > datetime(2025-06-16 11:00:49 PM) // After lateral movement (Flag 12)
     | where FileName contains "QuarterlyCryptoHoldings" // Look for the specific file name
     | project Timestamp, DeviceName, FileName, FolderPath, SHA256, InitiatingProcessAccountName, InitiatingProcessRemoteSessionDeviceName, InitiatingProcessRemoteSessionIP
     | order by Timestamp asc
-    | limit 1
     ```
+* **Query Results:**
+<img width="1315" height="302" alt="image11" src="https://github.com/user-attachments/assets/3c5d2e39-87b7-4636-a535-f5bf4e011b50" />
+
+
 * **Identified Answer:** **`b4f3a56312dd19064ca89756d96c6e47ca94ce021e36f818224e221754129e98`**
     * **Why:** This SHA256 hash belongs to `QuarterlyCryptoHoldings.docx` on `centralsrvr`, accessed at `Jun 18, 2025 6:23:24 AM`. Its access was initiated remotely from `MICHA3L`, confirming the attacker's continued pursuit of sensitive financial data on the new host.
 
@@ -339,10 +344,13 @@ The "Lurker" scenario presented a complex and deceptive intrusion, initially cam
     | where DeviceName == "centralsrvr"
     | where Timestamp > datetime(2025-06-18 06:23:24 AM) // After sensitive file access (Flag 13)
     | where RemoteUrl has_any ("dropbox.com", "mega.nz", "google.com", "pastebin.com") // Common exfil services
-    | project Timestamp, DeviceName, InitiatingProcessFileName, RemoteUrl, InitiatingProcessMD5
+    | project Timestamp, DeviceName, InitiatingProcessFileName, InitiatingProcessCommandLine, RemoteIP, RemoteUrl, RemotePort, InitiatingProcessMD5
     | order by Timestamp asc
-    | limit 1
     ```
+* **Query Results:**
+<img width="1475" height="131" alt="image5" src="https://github.com/user-attachments/assets/3381fe88-0759-4e4e-8372-043f24810d27" />
+
+    
 * **Identified Answer:** **`2e5a8590cf6848968fc23de3fa1e25f1`**
     * **Why:** This MD5 hash belongs to `powershell.exe` which initiated outbound connections to `drive.google.com` and `dropbox.com` starting at `Jun 18, 2025 6:23:24 AM`. This clearly indicates `powershell.exe` was the process attempting to exfiltrate data to cloud storage.
 
@@ -351,58 +359,67 @@ The "Lurker" scenario presented a complex and deceptive intrusion, initially cam
 ### Flag 15: Destination of Exfiltration
 
 * **Objective:** Identify the final IP address used for data exfiltration.
-* **Thought Process:** From the exfiltration attempts, we pinpointed the IP address of the last outbound connection.
+* **Thought Process:** From the exfiltration attempts, I pinpointed the IP address of the last outbound connection.
 * **KQL Query Used:**
     ```kusto
     DeviceNetworkEvents
     | where DeviceName == "centralsrvr"
     | where Timestamp > datetime(2025-06-18 06:23:24 AM) // After sensitive file access (Flag 13)
     | where InitiatingProcessRemoteSessionDeviceName == "MICHA3L" // Ensure it's from the compromised source
-    | project Timestamp, RemoteIP, RemoteUrl
+    | project Timestamp, DeviceName, InitiatingProcessFileName, InitiatingProcessCommandLine, RemoteIP, RemoteUrl, RemotePort
     | order by Timestamp desc // Get the latest connection
-    | limit 1
     ```
+* **Query Results:**
+<img width="1052" height="263" alt="image2" src="https://github.com/user-attachments/assets/bd9eca62-7a94-4b7d-9832-ce5478695880" />
+
+
 * **Identified Answer:** **`104.22.69.199`**
-    * **Why:** This IP address is associated with `pastebin.com`, and the connection occurred at `Jun 18, 2025 6:23:31 AM`, which was the latest outbound connection attempt from `centralsrvr` initiated by `MICHA3L` in the provided logs.
+    * **Why:** This IP address is associated with `pastebin.com` (a well-known service frequently used by attackers to dump and exfiltrate stolen data), and the connection occurred at `Jun 18, 2025 6:23:31 AM`, which was the latest outbound connection attempt from `centralsrvr` initiated by `MICHA3L` in the provided logs.
 
 ---
 
 ### Flag 16: PowerShell Downgrade Detection
 
 * **Objective:** Spot PowerShell version manipulation to avoid logging.
-* **Thought Process:** Attackers downgrade PowerShell to evade AMSI and other modern logging/detection. We looked for the `-Version 2` flag in PowerShell command lines.
+* **Thought Process:** Attackers downgrade PowerShell to evade AMSI and other modern logging/detection. I looked for the `-Version 2` flag in PowerShell command lines.
 * **KQL Query Used:**
     ```kusto
     DeviceProcessEvents
     | where DeviceName == "centralsrvr"
-    | where Timestamp > datetime(2025-06-18 06:23:31 AM) // After Flag 15
     | where FileName in~ ("powershell.exe", "pwsh.exe")
-    | where ProcessCommandLine has_any (" -Version 2", " -v 2")
-    | project Timestamp, DeviceName, ProcessCommandLine
+    | where ProcessCommandLine has_any (" -Version 2", " -v 2") // Look for the PowerShell downgrade flag
+    | project Timestamp, DeviceName, FileName, ProcessCommandLine, InitiatingProcessFileName, InitiatingProcessCommandLine, AccountName
     | order by Timestamp asc
-    | limit 1
     ```
-* **Identified Answer:** **`Jun 18, 2025 6:52:59 AM`**
-    * **Why:** This timestamp marks the execution of `"powershell.exe" -Version 2 -NoProfile -ExecutionPolicy Bypass -NoExit` on `centralsrvr`. This command explicitly forces PowerShell into an older, less secure version, a classic AMSI evasion technique.
+* **Query Results:**
+<img width="1115" height="293" alt="image7" src="https://github.com/user-attachments/assets/bed4a1d4-e2bd-4046-8515-13c00512c663" />
+
+
+
+* **Identified Answer:** **`2025-06-18T10:52:59.0847063Z`**
+    * **Why:** This timestamp marks the execution of `"powershell.exe" -Version 2 -NoProfile -ExecutionPolicy Bypass -NoExit` on `centralsrvr`. This command explicitly forces PowerShell into an older, less secure version, a classic AMSI evasion technique. The combination with -ExecutionPolicy Bypass (to run scripts without restriction) and -NoExit (to keep the session open) further confirms the malicious nature of this command.
 
 ---
 
 ### Flag 17: Log Clearing Attempt
 
 * **Objective:** Catch attacker efforts to cover their tracks.
-* **Thought Process:** Clearing logs is a common post-exploitation tactic to remove evidence. We looked for `wevtutil.exe` being used to clear the Security log.
+* **Thought Process:** Clearing logs is a common post-exploitation tactic to remove evidence. I looked for `wevtutil.exe` being used to clear the Security log.
 * **KQL Query Used:**
     ```kusto
     DeviceProcessEvents
-    | where DeviceName == "centralsrvr"
-    | where Timestamp > datetime(2025-06-18 06:52:59 AM) // After Flag 16
-    | where FileName =~ "wevtutil.exe"
-    | where ProcessCommandLine contains "cl Security" // Command to clear Security log
-    | project Timestamp, ProcessCreationTime, DeviceName, FileName, ProcessCommandLine
-    | order by Timestamp asc
-    | limit 1
+    | where DeviceName == "centralsrvr" // Target the second compromised machine
+    | where Timestamp > datetime(2025-06-18 06:52:59 AM) // After PowerShell downgrade (Flag 16)
+    | where FileName =~ "wevtutil.exe" // Target the event log utility
+    | where ProcessCommandLine contains "cl Security" // Look for the command to clear the Security log
+    | project Timestamp, ProcessCreationTime, DeviceName, FileName, ProcessCommandLine, InitiatingProcessFileName, InitiatingProcessCommandLine, AccountName
+    | order by Timestamp asc 
     ```
-* **Identified Answer:** **`Jun 18, 2025 6:52:33 AM`**
+* **Query Results:**
+<img width="857" height="313" alt="image12" src="https://github.com/user-attachments/assets/5bc74de2-a281-40c5-b033-d71ae81f5e85" />
+
+
+* **Identified Answer:** **`2025-06-18T10:52:33.3030998Z`**
     * **Why:** This timestamp indicates `wevtutil.exe` was executed with the command `"wevtutil.exe" cl Security` on `centralsrvr`. This is a direct action to clear the Security event log, a clear attempt by the attacker to cover their tracks.
 
 ---
